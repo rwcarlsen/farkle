@@ -37,8 +37,26 @@ type Strategy interface {
 	Roll(c Context, got Dice) (keep Dice)
 }
 
-func ValidKeep(keep Dice) bool {
-	_, rem := Score(0, keep)
+type GoForItStrategy struct{}
+
+func (_ GoForItStrategy) Roll(c Context, got Dice) (keep Dice) {
+	_, keep = Keep(c.ScoreFn, got)
+	return keep
+}
+
+type HoldStrategy struct{}
+
+func (_ HoldStrategy) Roll(c Context, got Dice) (keep Dice) {
+	if c.Points >= c.TurnThresh {
+		keep = nil
+	} else {
+		_, keep = Keep(c.ScoreFn, got)
+	}
+	return keep
+}
+
+func ValidKeep(fn ScoreFunc, keep Dice) bool {
+	_, rem := fn(0, keep)
 	if rem.N() != 0 {
 		return false
 	}
@@ -47,19 +65,28 @@ func ValidKeep(keep Dice) bool {
 
 func Turn(ctx Context, rng *rand.Rand, s Strategy) (points int) {
 	n := ndice
-	var rem Dice
 	for {
 		ctx.Points = points
 		got := RollDice(rng, n)
+
+		// check for failure to roll scoring dice
+		if pts, _ := ctx.ScoreFn(0, got); pts == 0 {
+			return 0
+		}
+
 		keep := s.Roll(ctx, got)
+
+		// check for cash-out
 		if keep.N() == 0 {
 			return points
-		} else if !ValidKeep(keep) {
+		} else if !ValidKeep(ctx.ScoreFn, keep) {
 			panic("one or more dice set aside are non-scoring")
 		}
 
-		points, rem = ctx.ScoreFn(points, keep)
-		n = rem.N()
+		points, _ = ctx.ScoreFn(points, keep)
+		n -= keep.N()
+
+		// check for hot dice
 		if n == 0 {
 			n = ndice
 		}
@@ -149,9 +176,18 @@ func Winner(scores []int) (index int) {
 func RollDice(rng *rand.Rand, n int) Dice {
 	dice := make(Dice, n)
 	for i := 0; i < n; i++ {
-		dice[rng.Intn(6)]++
+		dice[rng.Intn(6)+1]++
 	}
 	return dice
+}
+
+func Keep(fn ScoreFunc, d Dice) (points int, scoring Dice) {
+	points, rem := fn(0, d)
+	scoring = d.Clone()
+	for x, n := range rem {
+		scoring[x] -= n
+	}
+	return points, scoring
 }
 
 // ScoreFunc returns the highest score possible for the given dice.
@@ -174,15 +210,6 @@ func scoreStraight(prevscore int, d Dice) (score int, rem Dice) {
 	return prevscore + 1000, Dice{}
 }
 
-func Keep(fn ScoreFunc, d Dice) (points int, scoring Dice) {
-	points, rem := fn(0, d)
-	scoring = d.Clone()
-	for x, n := range rem {
-		scoring[x] -= n
-	}
-	return points, scoring
-}
-
 func scoreOneFive(prevscore int, d Dice) (score int, rem Dice) {
 	rem = d.Clone()
 	rem[1] = 0
@@ -195,9 +222,9 @@ func scoreTriple(prevscore int, d Dice) (score int, rem Dice) {
 	for x, n := range d {
 		if n >= 3 {
 			if x == 1 {
-				score += 1000 * n / 3
+				score += 1000 * (n / 3)
 			} else {
-				score += x * 100 * n / 3
+				score += x * 100 * (n / 3)
 			}
 			rem[x] = n % 3
 		}
