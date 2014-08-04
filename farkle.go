@@ -70,24 +70,66 @@ func (g *Game) turn(s Strategy, score int) (points int) {
 	for ndice > 0 {
 		got := rolldice(ndice)
 		keep := s.Roll(c, got)
-		switch {
-		case keep == nil:
-			return points
-		case keep
+	}
+}
+
+type Dice map[int]int
+
+func (d Dice) Score() int {
+}
+
+func (d Dice) Clone() Dice {
+	clone := Dice{}
+	for x, n := range d {
+		clone[x] = n
+	}
+	return clone
+}
+
+func (d Dice) Sub(other Dice) Dice {
+	diff := Dice{}
+	for x, n := range d {
+		if nother := other[x]; nother > 0 && n > nother {
+			diff[x] = n - nother
 		}
 	}
+	return diff
 }
 
-func scoretriple(dice []int) (rem []int, score int) {
-	counts := map[int]int{}
-	for _, v := range dice {
-		counts[v]++
+func scoreStraight(d Dice) (score int, rem Dice) {
+	for i := 0; i < 6; i++ {
+		if d[i] == 0 {
+			return 0, Dice{}
+		}
 	}
-	for v, n := range counts {
-	}
+	return 0, d.Clone()
 }
 
-func ScoreDice(dice []int) int {
+func scoreOneFive(d Dice) (score int, rem Dice) {
+
+	for i := 0; i < 6; i++ {
+		if d[i] == 0 {
+			return 0, Dice{}
+		}
+	}
+	return 0, d.Clone()
+}
+
+func scoreTriple(d Dice) (score int, rem Dice) {
+	maxtriple := 0
+	rem = d.Clone()
+	for x, n := range d {
+		if n >= 3 && x > maxtriple {
+			maxtriple = x
+			if x == 1 {
+				maxtriple = 10
+			}
+		}
+	}
+	if maxtriple > 0 {
+		rem[maxtriple] -= 3
+	}
+	return maxtriple * 100, rem
 }
 
 func (g *Game) Run() {
