@@ -97,18 +97,19 @@ func (d Dice) Sub(other Dice) Dice {
 }
 
 func scoreStraight(d Dice) (score int, rem Dice) {
-	for i := 0; i < 6; i++ {
+	for i := 1; i <= 6; i++ {
 		if d[i] == 0 {
-			return 0, Dice{}
+			return 0, d.Clone()
 		}
 	}
-	return 0, d.Clone()
+	return 1000, Dice{}
 }
 
 func scoreOneFive(d Dice) (score int, rem Dice) {
-
-	for i := 0; i < 6; i++ {
-		if d[i] == 0 {
+	rem = d.Clone()
+	if 
+	for i := 1; i <= 6; i++ {
+		if d[i] == 1 {
 			return 0, Dice{}
 		}
 	}
@@ -116,20 +117,18 @@ func scoreOneFive(d Dice) (score int, rem Dice) {
 }
 
 func scoreTriple(d Dice) (score int, rem Dice) {
-	maxtriple := 0
 	rem = d.Clone()
 	for x, n := range d {
-		if n >= 3 && x > maxtriple {
-			maxtriple = x
+		if n >= 3 {
 			if x == 1 {
-				maxtriple = 10
+				score += 1000
+			} else {
+				score += x * 100
 			}
+			rem[x] -= 3
 		}
 	}
-	if maxtriple > 0 {
-		rem[maxtriple] -= 3
-	}
-	return maxtriple * 100, rem
+	return score, rem
 }
 
 func (g *Game) Run() {
