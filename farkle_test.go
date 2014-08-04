@@ -1,6 +1,10 @@
 package farkle
 
-import "testing"
+import (
+	"math/rand"
+	"testing"
+	"time"
+)
 
 type roll struct {
 	Dice
@@ -33,16 +37,21 @@ func TestScore(t *testing.T) {
 	}
 }
 
+const ngames = 100000
+
 func TestPlayers(t *testing.T) {
 	players := []Strategy{
-		GoForItStrategy{},
+		//GoForItStrategy(450),
+		HoldStrategy{},
 		HoldStrategy{},
 	}
 
+	rng := rand.New(rand.NewSource(time.Now().Unix()))
+
 	goforit := 0.0
 	hold := 0.0
-	for i := 0; i < 10000; i++ {
-		scores := Play(nil, nil, players...)
+	for i := 0; i < ngames; i++ {
+		scores := Play(rng, nil, players...)
 		winner := Winner(scores)
 		if winner == 0 {
 			goforit++
@@ -50,6 +59,6 @@ func TestPlayers(t *testing.T) {
 			hold++
 		}
 	}
-	t.Logf("GoForIt wins with %v%% of matches", goforit/100)
-	t.Logf("Hold wins %v%% of matches", hold/100)
+	t.Logf("GoForIt wins with %.3f%% of matches", goforit/ngames*100)
+	t.Logf("Hold wins %.3f%% of matches", hold/ngames*100)
 }

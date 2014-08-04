@@ -12,9 +12,9 @@ const (
 )
 
 type Context struct {
-	// Scores contains the scores of all players (including this
+	// scores contains the scores of all players (including this
 	// player).
-	Scores []int
+	scores []int
 	// Index is the player's index - useful for retrieving the player's score.
 	Index int
 	// Points represents the points accumulated from prior rolls on the
@@ -30,71 +30,83 @@ type Context struct {
 	ScoreFn ScoreFunc
 }
 
+func (c Context) Score(i int) int { return c.scores[i] }
+
 type Strategy interface {
 	// Roll represents a roll of the dice.  keep is the dice values that are
-	// set aside and not rolled.  Returning zero keep dice (i.e. keep.N() ==
-	// 0) ends the turn.
+	// set aside and not rolled.  Returning all dice (i.e. keep == got) scores
+	// all possible points and ends the turn.
 	Roll(c Context, got Dice) (keep Dice)
 }
 
-type GoForItStrategy struct{}
+type GoForItStrategy int
 
-func (_ GoForItStrategy) Roll(c Context, got Dice) (keep Dice) {
-	_, keep = Keep(c.ScoreFn, got)
+func (n GoForItStrategy) Roll(c Context, got Dice) (keep Dice) {
+	var pts int
+	pts, keep = Keep(c.ScoreFn, got)
+	if c.Points+pts >= int(n) {
+		return got
+	}
 	return keep
 }
 
 type HoldStrategy struct{}
 
 func (_ HoldStrategy) Roll(c Context, got Dice) (keep Dice) {
-	if c.Points >= c.TurnThresh {
-		keep = nil
-	} else {
-		_, keep = Keep(c.ScoreFn, got)
+	var pts int
+	pts, keep = Keep(c.ScoreFn, got)
+	if c.Points+pts >= c.TurnThresh {
+		return got
 	}
 	return keep
 }
 
-func ValidKeep(fn ScoreFunc, keep Dice) bool {
-	_, rem := fn(0, keep)
-	if rem.N() != 0 {
-		return false
+func validKeep(got, keep Dice) bool {
+	for i, n := range keep {
+		if n > got[i] {
+			return false
+		}
 	}
 	return true
 }
 
 func Turn(ctx Context, rng *rand.Rand, s Strategy) (points int) {
+	var d, rem Dice
+	var pts int
 	n := ndice
-	for {
+	for n > 0 {
 		ctx.Points = points
-		got := RollDice(rng, n)
+		d = RollDice(rng, n, d)
 
 		// check for failure to roll scoring dice
-		if pts, _ := ctx.ScoreFn(0, got); pts == 0 {
+		if pts, _ := ctx.ScoreFn(0, d); pts == 0 {
 			return 0
 		}
 
-		keep := s.Roll(ctx, got)
-
-		// check for cash-out
-		if keep.N() == 0 {
-			return points
-		} else if !ValidKeep(ctx.ScoreFn, keep) {
-			panic("one or more dice set aside are non-scoring")
-		}
-
-		points, _ = ctx.ScoreFn(points, keep)
+		keep := s.Roll(ctx, d)
+		pts, rem = ctx.ScoreFn(points, keep)
+		points += pts
 		n -= keep.N()
 
+		if pts == 0 {
+			panic("keep dice don't score")
+		} else if !validKeep(d, keep) {
+			panic("keep dice are not a subset of got dice")
+		}
+
 		// check for hot dice
-		if n == 0 {
+		if n == 0 && rem.N() == 0 {
 			n = ndice
 		}
 	}
 	return points
 }
 
-type Dice map[int]int
+type Dice []int
+
+func NewDice() Dice {
+	return make(Dice, 7) // num die sides plus one
+}
 
 func (d Dice) N() int {
 	tot := 0
@@ -105,9 +117,9 @@ func (d Dice) N() int {
 }
 
 func (d Dice) Clone() Dice {
-	clone := Dice{}
-	for x, n := range d {
-		clone[x] = n
+	clone := make(Dice, len(d))
+	for i, n := range d {
+		clone[i] = n
 	}
 	return clone
 }
@@ -124,7 +136,7 @@ func Play(rng *rand.Rand, fn ScoreFunc, players ...Strategy) (scores []int) {
 	for Breaker(scores) < 0 {
 		for i, p := range players {
 			ctx := Context{
-				Scores:     append([]int{}, scores...),
+				scores:     scores,
 				ScoreFn:    fn,
 				Index:      i,
 				EndScore:   towin,
@@ -138,7 +150,7 @@ func Play(rng *rand.Rand, fn ScoreFunc, players ...Strategy) (scores []int) {
 	i := Breaker(scores)
 	for i, p := range players[:i] {
 		ctx := Context{
-			Scores:     append([]int{}, scores...),
+			scores:     scores,
 			ScoreFn:    fn,
 			Index:      i,
 			EndScore:   towin,
@@ -173,12 +185,14 @@ func Winner(scores []int) (index int) {
 	return index
 }
 
-func RollDice(rng *rand.Rand, n int) Dice {
-	dice := make(Dice, n)
-	for i := 0; i < n; i++ {
-		dice[rng.Intn(6)+1]++
+func RollDice(rng *rand.Rand, n int, d Dice) Dice {
+	if d == nil {
+		d = NewDice()
 	}
-	return dice
+	for i := 0; i < n; i++ {
+		d[rng.Intn(6)+1]++
+	}
+	return d
 }
 
 func Keep(fn ScoreFunc, d Dice) (points int, scoring Dice) {
@@ -196,38 +210,36 @@ type ScoreFunc func(prevscore int, d Dice) (score int, rem Dice)
 func Score(prevscore int, d Dice) (score int, rem Dice) {
 	return scoreOneFive(
 		scoreTriple(
-			scoreStraight(prevscore, d),
+			scoreStraight(prevscore, d.Clone()),
 		),
 	)
 }
 
 func scoreStraight(prevscore int, d Dice) (score int, rem Dice) {
-	for i := 1; i <= 6; i++ {
-		if d[i] == 0 {
-			return prevscore, d.Clone()
+	for _, n := range d {
+		if n == 0 {
+			return prevscore, d
 		}
 	}
-	return prevscore + 1000, Dice{}
+	return prevscore + 1000, NewDice()
 }
 
 func scoreOneFive(prevscore int, d Dice) (score int, rem Dice) {
-	rem = d.Clone()
-	rem[1] = 0
-	rem[5] = 0
-	return prevscore + d[1]*100 + d[5]*50, rem
+	d[1] = 0
+	d[5] = 0
+	return prevscore + d[1]*100 + d[5]*50, d
 }
 
 func scoreTriple(prevscore int, d Dice) (score int, rem Dice) {
-	rem = d.Clone()
-	for x, n := range d {
+	for i, n := range d {
 		if n >= 3 {
-			if x == 1 {
+			if i == 1 {
 				score += 1000 * (n / 3)
 			} else {
-				score += x * 100 * (n / 3)
+				score += i * 100 * (n / 3)
 			}
-			rem[x] = n % 3
+			d[i] = n % 3
 		}
 	}
-	return prevscore + score, rem
+	return prevscore + score, d
 }
