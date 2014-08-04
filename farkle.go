@@ -8,15 +8,15 @@ import (
 const (
 	towin  = 5000
 	thresh = 350
+	ndice  = 6
 )
 
 type Context struct {
-	// AllScores contains the scores of all players (including this
+	// Scores contains the scores of all players (including this
 	// player).
-	AllScores []int
-	// YourScore is the player's current total score excluding unscored points
-	// accumulated in the current turn.
-	YourScore int
+	Scores []int
+	// Index is the player's index - useful for retrieving the player's score.
+	Index int
 	// Points represents the points accumulated from prior rolls on the
 	// currently active turn on - points that are not permanent and may be
 	// lose.
@@ -26,56 +26,55 @@ type Context struct {
 	// TurnThresh is the minimum number of points that must be accumulated on a
 	// turn for them to become a permanent part of a player's score.
 	TurnThresh int
+	// ScoreFn is the function used to calculate all scores from the dice.
+	ScoreFn ScoreFunc
 }
 
 type Strategy interface {
 	// Roll represents a roll of the dice.  keep is the dice values that are
-	// set aside and not rolled.  Returning a non-nil keep slice results in
-	// another roll for this turn.  Returning a nil keep slice ends the turn.
-	Roll(c Context, got []int) (keep []int)
+	// set aside and not rolled.  Returning zero keep dice (i.e. keep.N() ==
+	// 0) ends the turn.
+	Roll(c Context, got Dice) (keep Dice)
 }
 
-type Game struct {
-	Rng     *rand.Rand
-	players []Strategy
-	scores  []int
+func ValidKeep(keep Dice) bool {
+	_, rem := Score(0, keep)
+	if rem.N() != 0 {
+		return false
+	}
+	return true
 }
 
-func (g *Game) AddPlayer(s Strategy) {
-	g.players = append(g.players, s)
-	g.scores = append(g.scores, 0)
-}
+func Turn(ctx Context, rng *rand.Rand, s Strategy) (points int) {
+	n := ndice
+	var rem Dice
+	for {
+		ctx.Points = points
+		got := RollDice(rng, n)
+		keep := s.Roll(ctx, got)
+		if keep.N() == 0 {
+			return points
+		} else if !ValidKeep(keep) {
+			panic("one or more dice set aside are non-scoring")
+		}
 
-func (g *Game) lead() (index int) {
-	best := 0
-	for i, v := range g.scores {
-		if v > best {
-			best = v
-			index = i
+		points, rem = ctx.ScoreFn(points, keep)
+		n = rem.N()
+		if n == 0 {
+			n = ndice
 		}
 	}
-	return index
-}
-
-func (g *Game) turn(s Strategy, score int) (points int) {
-	c := Context{
-		AllScores:  append([]int{}, scores...),
-		YourScore:  score,
-		Points:     0,
-		EndScore:   towin,
-		TurnThresh: thresh,
-	}
-
-	ndice := 5
-	for ndice > 0 {
-		got := rolldice(ndice)
-		keep := s.Roll(c, got)
-	}
+	return points
 }
 
 type Dice map[int]int
 
-func (d Dice) Score() int {
+func (d Dice) N() int {
+	tot := 0
+	for _, n := range d {
+		tot += n
+	}
+	return tot
 }
 
 func (d Dice) Clone() Dice {
@@ -86,68 +85,122 @@ func (d Dice) Clone() Dice {
 	return clone
 }
 
-func (d Dice) Sub(other Dice) Dice {
-	diff := Dice{}
-	for x, n := range d {
-		if nother := other[x]; nother > 0 && n > nother {
-			diff[x] = n - nother
+func Play(rng *rand.Rand, fn ScoreFunc, players ...Strategy) (scores []int) {
+	scores = make([]int, len(players))
+	if rng == nil {
+		rng = rand.New(rand.NewSource(time.Now().Unix()))
+	}
+	if fn == nil {
+		fn = Score
+	}
+
+	for Breaker(scores) < 0 {
+		for i, p := range players {
+			ctx := Context{
+				Scores:     append([]int{}, scores...),
+				ScoreFn:    fn,
+				Index:      i,
+				EndScore:   towin,
+				TurnThresh: thresh,
+			}
+			scores[i] += Turn(ctx, rng, p)
 		}
 	}
-	return diff
+
+	// give remaining players one more turn
+	i := Breaker(scores)
+	for i, p := range players[:i] {
+		ctx := Context{
+			Scores:     append([]int{}, scores...),
+			ScoreFn:    fn,
+			Index:      i,
+			EndScore:   towin,
+			TurnThresh: thresh,
+		}
+		scores[i] += Turn(ctx, rng, p)
+	}
+
+	return scores
 }
 
-func scoreStraight(d Dice) (score int, rem Dice) {
+// Breaker returns the index of the first player who broke the game-end
+// threshold or -1 if no player has broken it yet.
+func Breaker(scores []int) (index int) {
+	for i, v := range scores {
+		if v > towin {
+			return i
+		}
+	}
+	return -1
+}
+
+// Winner returns the index of the player with the highest score.
+func Winner(scores []int) (index int) {
+	best := 0
+	for i, v := range scores {
+		if v > best {
+			best = v
+			index = i
+		}
+	}
+	return index
+}
+
+func RollDice(rng *rand.Rand, n int) Dice {
+	dice := make(Dice, n)
+	for i := 0; i < n; i++ {
+		dice[rng.Intn(6)]++
+	}
+	return dice
+}
+
+// ScoreFunc returns the highest score possible for the given dice.
+type ScoreFunc func(prevscore int, d Dice) (score int, rem Dice)
+
+func Score(prevscore int, d Dice) (score int, rem Dice) {
+	return scoreOneFive(
+		scoreTriple(
+			scoreStraight(prevscore, d),
+		),
+	)
+}
+
+func scoreStraight(prevscore int, d Dice) (score int, rem Dice) {
 	for i := 1; i <= 6; i++ {
 		if d[i] == 0 {
-			return 0, d.Clone()
+			return prevscore, d.Clone()
 		}
 	}
-	return 1000, Dice{}
+	return prevscore + 1000, Dice{}
 }
 
-func scoreOneFive(d Dice) (score int, rem Dice) {
+func Keep(fn ScoreFunc, d Dice) (points int, scoring Dice) {
+	points, rem := fn(0, d)
+	scoring = d.Clone()
+	for x, n := range rem {
+		scoring[x] -= n
+	}
+	return points, scoring
+}
+
+func scoreOneFive(prevscore int, d Dice) (score int, rem Dice) {
 	rem = d.Clone()
-	if 
-	for i := 1; i <= 6; i++ {
-		if d[i] == 1 {
-			return 0, Dice{}
-		}
-	}
-	return 0, d.Clone()
+	rem[1] = 0
+	rem[5] = 0
+	return prevscore + d[1]*100 + d[5]*50, rem
 }
 
-func scoreTriple(d Dice) (score int, rem Dice) {
+func scoreTriple(prevscore int, d Dice) (score int, rem Dice) {
 	rem = d.Clone()
 	for x, n := range d {
 		if n >= 3 {
 			if x == 1 {
-				score += 1000
+				score += 1000 * n / 3
 			} else {
-				score += x * 100
+				score += x * 100 * n / 3
 			}
-			rem[x] -= 3
+			rem[x] = n % 3
 		}
 	}
-	return score, rem
-}
-
-func (g *Game) Run() {
-	if g.Rng == nil {
-		g.Rng = rand.New(rand.NewSource(time.Now().Unix()))
-	}
-
-	for g.lead() < towin {
-		for i, p := range g.players {
-			c := scores
-		}
-	}
-
-}
-
-func rolldice(rng *rand.Rand, n int) []int {
-	dice := make([]int, n)
-	for i := range dice {
-		dice[i] = rng.Intn(6)
-	}
-	return dice
+	return prevscore + score, rem
 }
