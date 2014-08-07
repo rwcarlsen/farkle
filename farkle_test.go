@@ -39,6 +39,26 @@ func TestScore(t *testing.T) {
 
 const ngames = 100000
 
+func TestBreaker(t *testing.T) {
+	var foo = [][]int{
+		[]int{towin, 0, 0, 0},
+		[]int{0, towin, 0, 1},
+		[]int{0, 0, towin, 2},
+		[]int{towin, towin, 0, 0},
+		[]int{0, towin, towin, 1},
+		[]int{towin, 0, towin, 0},
+		[]int{towin, towin, towin, 0},
+	}
+
+	for _, tst := range foo {
+		index := Breaker(tst[:3])
+		if index != tst[3] {
+			t.Errorf("test %+v failed: got index %v, expected %v", tst[:3], index, tst[3])
+		}
+	}
+
+}
+
 func TestPlayers(t *testing.T) {
 	players := []Strategy{
 		//GoForItStrategy(450),

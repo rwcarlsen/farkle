@@ -152,15 +152,15 @@ func Play(rng *rand.Rand, fn ScoreFunc, players ...Strategy) (scores []int) {
 
 	// give remaining players one more turn
 	i := Breaker(scores)
-	for i, p := range players[:i] {
+	for j, p := range players[:i] {
 		ctx := Context{
 			scores:     scores,
 			ScoreFn:    fn,
-			Index:      i,
+			Index:      j,
 			EndScore:   towin,
 			TurnThresh: thresh,
 		}
-		scores[i] += Turn(ctx, rng, p)
+		scores[j] += Turn(ctx, rng, p)
 	}
 
 	return scores
