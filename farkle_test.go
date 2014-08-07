@@ -44,21 +44,19 @@ func TestPlayers(t *testing.T) {
 		//GoForItStrategy(450),
 		HoldStrategy{},
 		HoldStrategy{},
+		HoldStrategy{},
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().Unix()))
 
-	goforit := 0.0
-	hold := 0.0
+	counts := make([]int, len(players))
 	for i := 0; i < ngames; i++ {
 		scores := Play(rng, nil, players...)
 		winner := Winner(scores)
-		if winner == 0 {
-			goforit++
-		} else {
-			hold++
-		}
+		counts[winner]++
 	}
-	t.Logf("GoForIt wins with %.3f%% of matches", goforit/ngames*100)
-	t.Logf("Hold wins %.3f%% of matches", hold/ngames*100)
+
+	for i, v := range counts {
+		t.Logf("Player %v won %.3f%% of matches", i, float64(v)/ngames*100)
+	}
 }
