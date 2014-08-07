@@ -57,6 +57,7 @@ func TestPlayers(t *testing.T) {
 	}
 
 	for i, v := range counts {
+		t.Logf("counts[i]=%v", counts[i])
 		t.Logf("Player %v won %.3f%% of matches", i, float64(v)/ngames*100)
 	}
 }

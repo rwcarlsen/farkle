@@ -70,7 +70,11 @@ func validKeep(got, keep Dice) bool {
 	return true
 }
 
+var counts = []int{0, 0, 0}
+
 func Turn(ctx Context, rng *rand.Rand, s Strategy) (points int) {
+	counts[ctx.Index]++
+
 	var d, rem Dice
 	var pts int
 	n := ndice
@@ -166,7 +170,7 @@ func Play(rng *rand.Rand, fn ScoreFunc, players ...Strategy) (scores []int) {
 // threshold or -1 if no player has broken it yet.
 func Breaker(scores []int) (index int) {
 	for i, v := range scores {
-		if v > towin {
+		if v >= towin {
 			return i
 		}
 	}
