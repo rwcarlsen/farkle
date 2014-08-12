@@ -33,6 +33,8 @@ type Context struct {
 }
 
 func (c Context) Score(i int) int { return c.scores[i] }
+func (c Context) MyScore() int    { return c.scores[c.Index] }
+func (c Context) LeadScore() int  { return c.scores[Winner(c.scores)] }
 
 type Strategy interface {
 	// Roll represents a roll of the dice.  keep is the dice values that are
@@ -50,6 +52,18 @@ func (_ HoldStrategy) Roll(c Context, got Dice) (keep Dice) {
 		return nil
 	}
 	return keep
+}
+
+type AggressiveEndStrategy struct {
+	Strategy
+}
+
+func (s AggressiveEndStrategy) Roll(c Context, got Dice) (keep Dice) {
+	pts, keep := KeepMax(c.ScoreFn, got)
+	if c.Last && c.MyScore()+c.Points+pts < c.LeadScore() {
+		return keep
+	}
+	return s.Strategy.Roll(c, got)
 }
 
 func validKeep(got, keep Dice) bool {

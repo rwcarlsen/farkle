@@ -58,26 +58,12 @@ func TestBreaker(t *testing.T) {
 	}
 }
 
-type AggressiveEndStrategy struct {
-	Strategy
-}
-
-func (s AggressiveEndStrategy) Roll(c Context, got Dice) (keep Dice) {
-	if !c.Last {
-		return s.Roll(c, got)
-	}
-
-	_, keep = KeepMax(c.ScoreFn, got)
-	return keep
-
-}
-
 func TestPlayers(t *testing.T) {
 	players := []Strategy{
 		//GoForItStrategy(450),
 		HoldStrategy{},
 		HoldStrategy{},
-		HoldStrategy{},
+		AggressiveEndStrategy{HoldStrategy{}},
 	}
 
 	rng := rand.New(rand.NewSource(time.Now().Unix()))
