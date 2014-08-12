@@ -37,7 +37,7 @@ func TestScore(t *testing.T) {
 	}
 }
 
-const ngames = 100000
+const ngames = 10000
 
 func TestBreaker(t *testing.T) {
 	var foo = [][]int{
@@ -56,6 +56,20 @@ func TestBreaker(t *testing.T) {
 			t.Errorf("test %+v failed: got index %v, expected %v", tst[:3], index, tst[3])
 		}
 	}
+}
+
+type AggressiveEndStrategy struct {
+	Strategy
+}
+
+func (s AggressiveEndStrategy) Roll(c Context, got Dice) (keep Dice) {
+	if !c.Last {
+		return s.Roll(c, got)
+	}
+
+	_, keep = KeepMax(c.ScoreFn, got)
+	return keep
+
 }
 
 func TestPlayers(t *testing.T) {

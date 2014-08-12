@@ -28,35 +28,26 @@ type Context struct {
 	TurnThresh int
 	// ScoreFn is the function used to calculate all scores from the dice.
 	ScoreFn ScoreFunc
+	// Last is true if this is the game's last turn/round
+	Last bool
 }
 
 func (c Context) Score(i int) int { return c.scores[i] }
 
 type Strategy interface {
 	// Roll represents a roll of the dice.  keep is the dice values that are
-	// set aside and not rolled.  Returning all dice (i.e. keep == got) scores
-	// all possible points and ends the turn.
+	// set aside and not rolled.  Returning nil scores all possible points and
+	// ends the turn.
 	Roll(c Context, got Dice) (keep Dice)
-}
-
-type GoForItStrategy int
-
-func (n GoForItStrategy) Roll(c Context, got Dice) (keep Dice) {
-	var pts int
-	pts, keep = Keep(c.ScoreFn, got)
-	if c.Points+pts >= int(n) {
-		return got
-	}
-	return keep
 }
 
 type HoldStrategy struct{}
 
 func (_ HoldStrategy) Roll(c Context, got Dice) (keep Dice) {
 	var pts int
-	pts, keep = Keep(c.ScoreFn, got)
+	pts, keep = KeepMax(c.ScoreFn, got)
 	if c.Points+pts >= c.TurnThresh {
-		return got
+		return nil
 	}
 	return keep
 }
@@ -84,7 +75,14 @@ func Turn(ctx Context, rng *rand.Rand, s Strategy) (points int) {
 		}
 
 		keep := s.Roll(ctx, d)
-		pts, rem = ctx.ScoreFn(points, keep)
+
+		// check for nil return indicating turn termination
+		if keep == nil {
+			points, _ = ctx.ScoreFn(points, d)
+			return points
+		}
+
+		pts, rem = ctx.ScoreFn(0, keep)
 		points += pts
 		n -= keep.N()
 
@@ -145,6 +143,7 @@ func Play(rng *rand.Rand, fn ScoreFunc, players ...Strategy) (scores []int) {
 				Index:      i,
 				EndScore:   towin,
 				TurnThresh: thresh,
+				Last:       done,
 			}
 			scores[i] += Turn(ctx, rng, p)
 		}
@@ -207,7 +206,7 @@ func RollDice(rng *rand.Rand, n int, d Dice) Dice {
 	return d
 }
 
-func Keep(fn ScoreFunc, d Dice) (points int, scoring Dice) {
+func KeepMax(fn ScoreFunc, d Dice) (points int, scoring Dice) {
 	points, rem := fn(0, d)
 	scoring = d.Clone()
 	for x, n := range rem {
