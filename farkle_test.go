@@ -56,7 +56,6 @@ func TestBreaker(t *testing.T) {
 			t.Errorf("test %+v failed: got index %v, expected %v", tst[:3], index, tst[3])
 		}
 	}
-
 }
 
 func TestPlayers(t *testing.T) {

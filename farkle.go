@@ -70,11 +70,7 @@ func validKeep(got, keep Dice) bool {
 	return true
 }
 
-var counts = []int{0, 0, 0}
-
 func Turn(ctx Context, rng *rand.Rand, s Strategy) (points int) {
-	counts[ctx.Index]++
-
 	var d, rem Dice
 	var pts int
 	n := ndice
@@ -137,7 +133,11 @@ func Play(rng *rand.Rand, fn ScoreFunc, players ...Strategy) (scores []int) {
 		fn = Score
 	}
 
-	for Breaker(scores) < 0 {
+	done := false
+	for !done {
+		// give one turn to all players after one breaks winner threshold
+		done = Breaker(scores) >= 0
+
 		for i, p := range players {
 			ctx := Context{
 				scores:     scores,
@@ -148,19 +148,11 @@ func Play(rng *rand.Rand, fn ScoreFunc, players ...Strategy) (scores []int) {
 			}
 			scores[i] += Turn(ctx, rng, p)
 		}
-	}
 
-	// give remaining players one more turn
-	i := Breaker(scores)
-	for j, p := range players[:i] {
-		ctx := Context{
-			scores:     scores,
-			ScoreFn:    fn,
-			Index:      j,
-			EndScore:   towin,
-			TurnThresh: thresh,
+		// keep going if there is a tie
+		if len(Winners(scores)) > 1 {
+			done = false
 		}
-		scores[j] += Turn(ctx, rng, p)
 	}
 
 	return scores
@@ -177,16 +169,32 @@ func Breaker(scores []int) (index int) {
 	return -1
 }
 
-// Winner returns the index of the player with the highest score.
+// Winner returns the index of the last player with the highest score.
 func Winner(scores []int) (index int) {
 	best := 0
 	for i, v := range scores {
 		if v > best {
-			best = v
 			index = i
+			best = v
 		}
 	}
 	return index
+}
+
+// Winners returns the indices of the players with the highest score.
+func Winners(scores []int) (indices []int) {
+	best := 0
+	for _, v := range scores {
+		if v > best {
+			best = v
+		}
+	}
+	for i, v := range scores {
+		if v == best {
+			indices = append(indices, i)
+		}
+	}
+	return indices
 }
 
 func RollDice(rng *rand.Rand, n int, d Dice) Dice {
@@ -225,7 +233,7 @@ func scoreStraight(prevscore int, d Dice) (score int, rem Dice) {
 			return prevscore, d
 		}
 	}
-	return prevscore + 1000, NewDice()
+	return prevscore + 1500, NewDice()
 }
 
 func scoreOneFive(prevscore int, d Dice) (score int, rem Dice) {
